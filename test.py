@@ -12,3 +12,19 @@ print "Slope: %s" % line.slope
 print "Intercept: %s" % line.intercept
 print "Slope range: %s" % line.slope_range
 print "Intercept range: %s" % line.intercept_range
+
+import numpy
+import statsmodels.api as stats
+
+gls_gamma = stats.GLM(y_data, x_data, family=stats.families.Gamma())
+result = gls_gamma.fit()
+print result.summary()
+
+print "Predict x = 0:", result.predict([0])
+print "predict x_data", result.predict(x_data)
+
+import pprint
+
+#pprint.pprint(dir(result))
+
+
