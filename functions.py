@@ -1,13 +1,9 @@
 import datetime
 import dateutil
 import math
-import pprint
 import traceback
 
-from graphite_api.functions import \
-    _fetchWithBootstrap,  \
-    safeMul, \
-    safeSum
+from graphite_api.functions import _fetchWithBootstrap
 from graphite_api.render.datalib import TimeSeries
 from itertools import izip_longest
 from scipy import stats
@@ -79,8 +75,6 @@ class FittedLine(object):
                 )
             ) / (self.n * (self.n - 2))
         )
-        debug("R-squares: %s\n" % self.r_value ** 2)
-        debug("Error sigma squared: %s\n" % self.error_sigma)
         self.error_sigma = math.sqrt(self.error_sigma)
 
         self.error_slope = (
@@ -186,44 +180,27 @@ def least_squared_line(series):
 
     """
     time_range = range(series.start, series.end, series.step)
-    debug("series start: %s\n" % series.start)
-    debug("series end: %s\n" % series.end)
-    debug("series step: %s\n" % series.step)
-    n = len(time_range)
-    debug("n: %s\n" % n)
-    if len(series) > n:
-        series = series[:n]
-    debug("Number of values: %s\n" % len(series))
+    n = min(len(time_range), len(series))
+
+    series = series[:n]
+    time_range = time_range[:n]
 
     line = FittedLine(time_range, series)
-
-    debug("scipy_slope: %s\n" % line.slope)
-    debug("scipy_int: %s\n" % line.intercept)
-    debug("scipy_r_squared: %s\n" % line.r_value ** 2)
-    debug("scipy_p_value: %s\n" % line.r_value ** 2)
-    debug("scipy_stderr: %s\n" % line.std_error)
-    debug("scipy_slope_range: %s\n" % line.slope_range)
-    debug("scipy_int_range: %s\n" % line.intercept_range)
     return line
 
 
 def time_delta(a, b):
-    debug("Time delta %s, %s\n" % (a, b))
     datetime_a = datetime.datetime.fromtimestamp(int(a))
-    debug("Time a: %s\n" % datetime_a)
     datetime_b = datetime.datetime.fromtimestamp(int(b))
-    debug("Time b %s\n" % datetime_b)
     try:
         delta = dateutil.relativedelta.relativedelta(datetime_b, datetime_a)
     except Exception as e:
         debug("%s" % e)
         raise
-    debug("Finished delta: %s\n" % pprint.pformat(delta))
     return delta
 
 
 def time_delta_string(delta):
-    debug("Delta string %s\n" % pprint.pformat(delta))
     parts = []
     if delta.years != 0:
         parts.append("%s years" % delta.years)
@@ -238,117 +215,95 @@ def time_delta_string(delta):
     return None
 
 
-def leastSquaresIntercept(requestContext, seriesList, value, days=None):
+def leastSquaresIntercept(requestContext, seriesList, threshold,
+                          days=None, id=None):
     """
     Calculates the time at which the line of best fit created by
     the least squared method will have the expected value.
 
     @param requestContext
     @param seriesList - List of time series
-    @param value - Value to find intercept for
+    @param threshold - Value to find intercept for
+    @param days - Number of days back to fetch data
+    @param id - Special identifier to send back if specified
 
     """
-    debug("Least squares intercept. looking for %s\n" % value)
     if days is None:
         days = LEAST_SQUARED_DAYS
     result = []
     bootstrapList = _fetchWithBootstrap(requestContext, seriesList,
                                         days=int(days))
     for bootSeries, series in izip_longest(bootstrapList, seriesList):
-        line = least_squared_line(bootSeries)
+        try:
+            line = least_squared_line(bootSeries)
+        except:
+            debug("%s\n" % traceback.format_exc())
+            continue
+
         m, b, r_squared = (line.slope, line.intercept, line.r_value ** 2)
-        debug("Least Squares Intercept:\n")
-        debug("slope: %s\n" % m)
-        debug("y-intercept: %s\n" % b)
-        debug("r_squared: %s\n" % r_squared)
-        debug(pprint.pformat(requestContext))
-        debug("\n")
+        t_trend = int(line.predict_mean_response(threshold))
+        t_low = int(line.predict_lower(0.95, threshold))
+        t_high = int(line.predict_upper(0.95, threshold))
 
-        debug("Starting string time trends\n")
+        obj = {
+            'intercepts': {
+                'lower': t_low,
+                'trend': t_trend,
+                'upper': t_high
+            },
+            'r_squared': r_squared,
+            'slope': m,
+            'trend_now': line.line_generator()(series.end),
+            'threshold': threshold,
+            'last': series[-1]
+        }
 
-        t_trend = int(line.predict_mean_response(value))
-        delta_trend = time_delta(series.end, t_trend)
-        string_trend = time_delta_string(delta_trend)
-        debug("Delta trend: %s\n" % string_trend)
+        if id is not None:
+            obj['id'] = id
+
         result.append(TimeSeries(
             series.name,
             series.start, series.start + 1, series.step,
-            [string_trend]
+            [obj]
         ))
-
-        t_low = int(line.predict_lower(0.95, value))
-        delta_low = time_delta(series.end, t_low)
-        string_low = time_delta_string(delta_low)
-        debug("Delta low: %s\n" % string_low)
-        result.append(TimeSeries(
-            "%s: low" % series.name,
-            series.start, series.start + 1, series.step,
-            [string_low]
-        ))
-
-        t_high = int(line.predict_upper(0.95, value))
-        delta_high = time_delta(series.end, t_high)
-        string_high = time_delta_string(delta_high)
-        debug("Delta high: %s\n" % string_high)
-        result.append(TimeSeries(
-            "%s: high" % series.name,
-            series.start, series.start + 1, series.step,
-            [string_high]
-        ))
-
-        debug("Times for %s\n" % value)
-        debug("low: %s\n" % string_low)
-        debug("mean: %s\n" % string_trend)
-        debug("high: %s\n" % string_high)
     return result
 
 
 def leastSquaresTest(requestContext, seriesList):
-    debug("Starting least squares test for %s\n" % requestContext)
-    debug("Length of input series: %s\n" % len(seriesList))
     result = []
     for series in seriesList:
-        debug("Looking at series %s\n" % series.name)
         time_range = range(series.start, series.end, series.step)
-        debug("Created time range\n")
         src_time = time_range[:len(time_range) / 2]
-        debug("Created src range\n")
         dest_time = time_range[len(time_range) / 2:]
-        debug("Created dest range\n")
         src_series = TimeSeries(
             series.name,
             src_time[0], src_time[-1], series.step,
             series[:len(src_time)]
         )
-        debug("Created the src series.  Length of %s\n" % len(src_series))
 
         try:
             line = least_squared_line(src_series)
-        except Exception as e:
+        except:
             debug("%s\n" % traceback.format_exc())
             return []
 
-        debug("Created the test line\n")
         result.append(TimeSeries(
             series.name,
             dest_time[0], dest_time[-1], series.step,
             map(line.line_generator(), dest_time)
         ))
-        debug("Created the trend line\n")
 
         result.append(TimeSeries(
             series.name,
             dest_time[0], dest_time[-1], series.step,
             map(line.prediction_band_lower(0.95), dest_time)
         ))
-        debug( "Created the lower line\n")
 
         result.append(TimeSeries(
             series.name,
             dest_time[0], dest_time[-1], series.step,
             map(line.prediction_band_upper(0.95), dest_time)
         ))
-        debug("Created the upper line\n")
     return result
 
 
