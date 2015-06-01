@@ -1,5 +1,3 @@
-import datetime
-import dateutil
 import math
 import traceback
 
@@ -189,32 +187,6 @@ def least_squared_line(series):
     return line
 
 
-def time_delta(a, b):
-    datetime_a = datetime.datetime.fromtimestamp(int(a))
-    datetime_b = datetime.datetime.fromtimestamp(int(b))
-    try:
-        delta = dateutil.relativedelta.relativedelta(datetime_b, datetime_a)
-    except Exception as e:
-        debug("%s" % e)
-        raise
-    return delta
-
-
-def time_delta_string(delta):
-    parts = []
-    if delta.years != 0:
-        parts.append("%s years" % delta.years)
-    if delta.months != 0:
-        parts.append("%s months" % delta.months)
-    if delta.days != 0:
-        parts.append("%s days" % delta.days)
-    if delta.hours != 0:
-        parts.append("%s hours" % delta.hours)
-    if parts:
-        return ', '.join(parts)
-    return None
-
-
 def leastSquaresIntercept(requestContext, seriesList, threshold,
                           days=None, id=None):
     """
@@ -240,7 +212,7 @@ def leastSquaresIntercept(requestContext, seriesList, threshold,
             debug("%s\n" % traceback.format_exc())
             continue
 
-        m, b, r_squared = (line.slope, line.intercept, line.r_value ** 2)
+        m, _, r_squared = (line.slope, line.intercept, line.r_value ** 2)
         t_trend = int(line.predict_mean_response(threshold))
         t_low = int(line.predict_lower(0.95, threshold))
         t_high = int(line.predict_upper(0.95, threshold))
@@ -265,44 +237,6 @@ def leastSquaresIntercept(requestContext, seriesList, threshold,
             series.name,
             series.start, series.start + 1, series.step,
             [obj]
-        ))
-    return result
-
-
-def leastSquaresTest(requestContext, seriesList):
-    result = []
-    for series in seriesList:
-        time_range = range(series.start, series.end, series.step)
-        src_time = time_range[:len(time_range) / 2]
-        dest_time = time_range[len(time_range) / 2:]
-        src_series = TimeSeries(
-            series.name,
-            src_time[0], src_time[-1], series.step,
-            series[:len(src_time)]
-        )
-
-        try:
-            line = least_squared_line(src_series)
-        except:
-            debug("%s\n" % traceback.format_exc())
-            return []
-
-        result.append(TimeSeries(
-            series.name,
-            dest_time[0], dest_time[-1], series.step,
-            map(line.line_generator(), dest_time)
-        ))
-
-        result.append(TimeSeries(
-            series.name,
-            dest_time[0], dest_time[-1], series.step,
-            map(line.prediction_band_lower(0.95), dest_time)
-        ))
-
-        result.append(TimeSeries(
-            series.name,
-            dest_time[0], dest_time[-1], series.step,
-            map(line.prediction_band_upper(0.95), dest_time)
         ))
     return result
 
@@ -350,6 +284,15 @@ def leastSquares(requestContext, seriesList, days=None):
 
 
 def removeTrendByDifferences(requestContext, seriesList):
+    """
+    Experimental whitening. Computes new line by subtracting
+    the value at t-1 from the value at t.
+
+    @param requestContext
+    @param seriesList
+    @return - List
+
+    """
     result = []
     for series in seriesList:
         result.append(TimeSeries(
@@ -361,6 +304,15 @@ def removeTrendByDifferences(requestContext, seriesList):
 
 
 def removeTrendByLine(requestContext, seriesList):
+    """
+    Experimental whitening. Computes new series by subtracting the value
+    of the trend line from the actual value.
+
+    @param requestContext
+    @param seriesList - List
+    @return - List
+
+    """
     result = []
     for series in seriesList:
         line = least_squared_line(series)
@@ -375,8 +327,5 @@ def removeTrendByLine(requestContext, seriesList):
 
 CustomFunctions = {
     'leastSquares': leastSquares,
-    'leastSquaresTest': leastSquaresTest,
     'leastSquaresIntercept': leastSquaresIntercept,
-    'removeTrendByDifferences': removeTrendByDifferences,
-    'removeTrendByLine': removeTrendByLine
 }
