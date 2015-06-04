@@ -207,6 +207,19 @@ def least_squared_line(series):
     return FittedLine(time_range, series)
 
 
+def last_value(series):
+    """
+    Grabs the last known non None value
+
+    @param series - TimeSeries
+
+    """
+    for v in reversed(series):
+        if v is not None:
+            return v
+    return None
+
+
 def leastSquaresIntercept(requestContext, seriesList, threshold,
                           days=None, id=None):
     """
@@ -247,7 +260,7 @@ def leastSquaresIntercept(requestContext, seriesList, threshold,
             'slope': m,
             'trend_now': line.line_generator()(series.end),
             'threshold': threshold,
-            'last': series[-1]
+            'last': last_value(series)
         }
 
         if id is not None:

@@ -120,6 +120,26 @@ class TestFittedLine(unittest.TestCase):
         for v in y_cut_values:
             self.assertTrue(v not in line.y_data)
 
+    def test_last_value(self):
+        """
+        Tests the function that returns the last non none value from a list
+
+        """
+        data = []
+        self.assertTrue(functions.last_value(data) is None)
+
+        data = [1]
+        self.assertTrue(functions.last_value(data) == 1)
+
+        data = [1, None]
+        self.assertTrue(functions.last_value(data) == 1)
+
+        data = [1, None, None]
+        self.assertTrue(functions.last_value(data) == 1)
+
+        data = [1, None, None, 2]
+        self.assertTrue(functions.last_value(data) == 2)
+
 
 if __name__ == '__main__':
     unittest.main()
