@@ -3,7 +3,7 @@ import traceback
 
 from graphite_api.functions import _fetchWithBootstrap
 from graphite_api.render.datalib import TimeSeries
-from itertools import izip_longest
+from itertools import izip, izip_longest
 from scipy import stats
 
 LEAST_SQUARED_DAYS = 60
@@ -24,14 +24,14 @@ class FittedLine(object):
             response variable
 
         """
-        self.n = min(len(x_data), len(y_data))
-        self.x_data = x_data[:self.n]
-        self.y_data = y_data[:self.n]
+        self.x_data = x_data
+        self.y_data = y_data
+        self.prep_data()
         self.slope, \
             self.intercept, \
             self.r_value, \
             self.p_value, \
-            self.std_error = stats.linregress(x_data, y_data)
+            self.std_error = stats.linregress(self.x_data, self.y_data)
 
         self.t = stats.t.ppf(1 - 0.025, self.n - 2)
 
@@ -44,6 +44,32 @@ class FittedLine(object):
             self.intercept - (self.t * self.error_intercept),
             self.intercept + (self.t * self.error_intercept)
         ]
+
+    def prep_data(self):
+        """
+        Prepares the data. Ensures the same dimensions and looks for
+        None values.
+
+        """
+        # Trim to same dimensions
+        self.n = min(len(self.x_data), len(self.y_data))
+        self.x_data = self.x_data[:self.n]
+        self.y_data = self.y_data[:self.n]
+
+        # Take care of None values. Must remove pairs
+
+        # First find indexes
+        nones = [i for i, p in
+                 enumerate(izip(self.x_data, self.y_data))
+                 if p[0] is None or p[1] is None]
+
+        # Nones are in ascending order, iterate backwards
+        for i in reversed(nones):
+            del self.x_data[i]
+            del self.y_data[i]
+
+        # Set new n to account for reduced data points
+        self.n = self.n - len(nones)
 
     def _sums(self):
         """
@@ -178,13 +204,7 @@ def least_squared_line(series):
 
     """
     time_range = range(series.start, series.end, series.step)
-    n = min(len(time_range), len(series))
-
-    series = series[:n]
-    time_range = time_range[:n]
-
-    line = FittedLine(time_range, series)
-    return line
+    return FittedLine(time_range, series)
 
 
 def leastSquaresIntercept(requestContext, seriesList, threshold,
