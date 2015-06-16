@@ -33,6 +33,9 @@ class FittedLine(object):
             self.p_value, \
             self.std_error = stats.linregress(self.x_data, self.y_data)
 
+        if self.slope == 0:
+            raise Exception("0 Slope")
+
         self.t = stats.t.ppf(1 - 0.025, self.n - 2)
 
         self._sums()
