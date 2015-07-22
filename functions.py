@@ -194,7 +194,7 @@ class FittedLine(object):
 
 def debug(msg):
     with open('/tmp/debug', 'a') as f:
-        f.write(msg)
+        f.write("%s\n" % msg)
 
 
 def least_squared_line(series):
@@ -239,11 +239,9 @@ def leastSquaresIntercept(requestContext, seriesList, threshold,
     if days is None:
         days = LEAST_SQUARED_DAYS
     result = []
-    bootstrapList = _fetchWithBootstrap(requestContext, seriesList,
-                                        days=int(days))
-    for bootSeries, series in izip_longest(bootstrapList, seriesList):
+    for series in seriesList:
         try:
-            line = least_squared_line(bootSeries)
+            line = least_squared_line(series)
         except:
             debug("%s\n" % traceback.format_exc())
             continue
